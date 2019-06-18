@@ -1,0 +1,56 @@
+image: registry.timmertech.nl/docker/docker:latest
+
+stages:
+  - build
+  - dockerhub
+
+.docker-login: &docker-login
+  before_script:
+    - echo ${CI_JOB_TOKEN} | docker login -u gitlab-ci-token --password-stdin ${CI_REGISTRY}
+
+.docker-build: &docker-build
+  script:
+    - docker build --pull --force-rm=true --squash 
+        --build-arg VCS_REF=`git rev-parse --short HEAD` 
+        --build-arg BUILD_DATE=`date -u +"%Y-%m-%dT%H:%M:%SZ"` 
+        --build-arg PGV=$(cat VERSION) 
+        --build-arg PGV_SHORT=$(grep -o -E "[0-9]{1,2}\.[0-9]" VERSION) 
+        --tag=${DOCKER_IMAGE} .
+
+.docker-push: &docker-push
+  after_script:
+    - docker push ${DOCKER_IMAGE}
+
+docker:latest:
+  stage: build
+  only: 
+    - master
+  except:
+    - tags
+  variables:
+    DOCKER_IMAGE: ${CI_REGISTRY}/${CI_PROJECT_PATH}:latest
+  <<: *docker-login
+  <<: *docker-build
+  <<: *docker-push
+
+docker:branches:
+  stage: build
+  only:
+    - branches
+  except:
+    - master
+    - tags
+  variables:
+    DOCKER_IMAGE: ${CI_REGISTRY}/${CI_PROJECT_PATH}:${CI_COMMIT_REF_NAME}
+  <<: *docker-login
+  <<: *docker-build
+
+docker:release:
+  stage: build
+  only:
+    - tags
+  variables:
+    DOCKER_IMAGE: ${CI_REGISTRY}/${CI_PROJECT_PATH}:${CI_COMMIT_REF_NAME}
+  <<: *docker-login
+  <<: *docker-build
+  <<: *docker-push
